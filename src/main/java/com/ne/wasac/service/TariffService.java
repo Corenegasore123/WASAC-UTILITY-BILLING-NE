@@ -58,11 +58,17 @@ public class TariffService {
         plan.setFixedServiceCharge(request.getFixedServiceCharge());
         plan.setVatRate(request.getVatRate());
         plan.setLatePenaltyRate(request.getLatePenaltyRate());
-        plan.setVersionNo(nextVersion(request.getMeterType()));
+        int versionNo = nextVersion(request.getMeterType());
+        plan.setVersionNo(versionNo);
         closePreviousVersions(request.getMeterType(), request.getEffectiveFrom());
         mapTiers(plan, request.getTiers());
         TariffPlan saved = tariffPlanRepository.save(plan);
-        auditService.log(AuditAction.TARIFF_CREATED, "TariffPlan", saved.getId(), null, saved.getVersionNo().toString());
+        if (versionNo == 1) {
+            auditService.log(AuditAction.TARIFF_CREATED, "TariffPlan", saved.getId(), null, saved.getVersionNo().toString());
+        } else {
+            auditService.log(AuditAction.TARIFF_UPDATED, "TariffPlan", saved.getId(),
+                    String.valueOf(versionNo - 1), saved.getVersionNo().toString());
+        }
         return DtoMapper.toTariffPlanResponse(saved);
     }
 
