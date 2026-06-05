@@ -1,0 +1,111 @@
+%% WASAC — Spring Boot Component Diagram
+%% Render: https://mermaid.live
+
+graph TB
+    subgraph Controllers
+        AuthC[AuthController]
+        UserC[UserController]
+        CustC[CustomerController]
+        MeterC[MeterController]
+        ReadC[MeterReadingController]
+        TariffC[TariffController]
+        BillC[BillController]
+        PayC[PaymentController]
+        NotifC[NotificationController]
+        AuditC[AuditLogController]
+    end
+
+    subgraph Config
+        SecC[SecurityConfig + JWT]
+        SchedC[SchedulingConfig]
+        DataI[DataInitializer]
+        DbR[DatabaseRoutineInitializer]
+        OpenAPI[OpenApiConfig]
+    end
+
+    subgraph CoreServices
+        AuthS[AuthService]
+        UserS[UserService]
+        CustS[CustomerService]
+        MeterS[MeterService]
+        ReadS[MeterReadingService]
+        TariffS[TariffService]
+        BillS[BillService]
+        PayS[PaymentService]
+        NotifS[NotificationService]
+        AuditS[AuditService]
+        EmailS[EmailService]
+    end
+
+    subgraph Scheduler
+        LateP[LatePenaltyScheduler<br/>@Scheduled cron]
+    end
+
+    subgraph Repositories
+        UserR[(AppUserRepository)]
+        CustR[(CustomerRepository)]
+        MeterR[(MeterRepository)]
+        ReadR[(MeterReadingRepository)]
+        TariffR[(TariffPlanRepository)]
+        BillR[(BillRepository)]
+        PayR[(PaymentRepository)]
+        NotifR[(NotificationRepository)]
+        AuditR[(AuditLogRepository)]
+        OtpR[(OtpVerificationRepository)]
+    end
+
+    subgraph Database
+        PG[(PostgreSQL wasac_db)]
+    end
+
+    AuthC --> AuthS
+    UserC --> UserS
+    CustC --> CustS
+    MeterC --> MeterS
+    ReadC --> ReadS
+    TariffC --> TariffS
+    BillC --> BillS
+    PayC --> PayS
+    NotifC --> NotifS
+    AuditC --> AuditS
+
+    ReadS --> BillS
+    BillS --> EmailS
+    BillS --> TariffS
+    BillS --> AuditS
+    PayS --> BillS
+    PayS --> EmailS
+    AuthS --> EmailS
+    UserS --> EmailS
+    CustS --> EmailS
+
+    SchedC --> LateP
+    LateP --> BillR
+    LateP --> TariffS
+    LateP --> BillS
+
+    AuthS --> UserR
+    AuthS --> OtpR
+    UserS --> UserR
+    CustS --> CustR
+    MeterS --> MeterR
+    ReadS --> ReadR
+    TariffS --> TariffR
+    BillS --> BillR
+    PayS --> PayR
+    NotifS --> NotifR
+    AuditS --> AuditR
+
+    UserR --> PG
+    CustR --> PG
+    MeterR --> PG
+    ReadR --> PG
+    TariffR --> PG
+    BillR --> PG
+    PayR --> PG
+    NotifR --> PG
+    AuditR --> PG
+    OtpR --> PG
+
+    DataI --> UserR
+    DbR --> PG

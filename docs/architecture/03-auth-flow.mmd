@@ -1,0 +1,59 @@
+%% WASAC — Authentication Flows
+%% Render: https://mermaid.live
+
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant A as AuthController
+    participant S as AuthService
+    participant DB as PostgreSQL
+    participant M as Gmail SMTP
+
+    rect rgb(240, 248, 255)
+        Note over C,M: Customer Self-Signup (OTP)
+        C->>A: POST /api/auth/signup
+        A->>S: signup()
+        S->>DB: Create AppUser + Customer (pendingEmailVerification=true)
+        S->>DB: Save OTP (SIGNUP)
+        S->>M: Send OTP email
+        S-->>C: 201 RegisterPendingResponse
+        C->>A: POST /api/auth/verify-otp
+        A->>S: verifyOtp()
+        S->>DB: Validate OTP, activate account
+        S-->>C: 200 AuthResponse + JWT
+    end
+
+    rect rgb(255, 248, 240)
+        Note over C,M: Admin-Created Customer (temp password)
+        C->>A: POST /api/customers (ADMIN JWT)
+        Note right of C: CustomerService creates profile + user
+        C->>M: Temp password emailed
+        C->>A: POST /api/auth/login
+        A-->>C: JWT (mustChangePassword=true)
+        C->>A: POST /api/auth/change-password
+        A-->>C: Password changed — full access
+    end
+
+    rect rgb(240, 255, 240)
+        Note over C,M: Staff Login (Operator / Finance)
+        C->>A: POST /api/auth/login
+        A->>S: login()
+        S->>DB: Load user + roles
+        alt INACTIVE or pending verification
+            S-->>C: 400 Account not activated
+        else mustChangePassword
+            S-->>C: 200 JWT (limited until change-password)
+        else OK
+            S-->>C: 200 JWT
+        end
+    end
+
+    rect rgb(255, 240, 245)
+        Note over C,M: Password Recovery
+        C->>A: POST /api/auth/forgot-password
+        S->>DB: OTP (PASSWORD_RESET)
+        S->>M: Recovery OTP email
+        C->>A: POST /api/auth/reset-password
+        S->>DB: Update password, clear flags
+        S-->>C: 200 Password reset
+    end

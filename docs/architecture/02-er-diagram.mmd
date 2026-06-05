@@ -1,0 +1,143 @@
+%% WASAC — Entity Relationship Diagram
+%% Render: https://mermaid.live
+
+erDiagram
+    ROLES ||--o{ USER_ROLES : has
+    APP_USERS ||--o{ USER_ROLES : assigned
+    APP_USERS }o--o| CUSTOMERS : "login link"
+    CUSTOMERS ||--o{ METERS : owns
+    CUSTOMERS ||--o{ BILLS : receives
+    CUSTOMERS ||--o{ NOTIFICATIONS : notified
+    METERS ||--o{ METER_READINGS : tracked
+    METERS ||--o{ BILLS : billed
+    METER_READINGS ||--|| BILLS : generates
+    BILLS ||--o{ PAYMENTS : settled_by
+    TARIFF_PLANS ||--o{ TARIFF_TIERS : contains
+    APP_USERS ||--o{ AUDIT_LOGS : performs
+    APP_USERS ||--o{ OTP_VERIFICATIONS : requests
+
+    ROLES {
+        bigint id PK
+        string name "ROLE_ADMIN | OPERATOR | FINANCE | CUSTOMER"
+    }
+
+    APP_USERS {
+        bigint id PK
+        string email UK
+        string phone_number UK
+        string national_id UK
+        string password "BCrypt"
+        string status "ACTIVE | INACTIVE"
+        boolean must_change_password
+        boolean pending_email_verification
+        bigint customer_id FK
+    }
+
+    CUSTOMERS {
+        bigint id PK
+        string national_id UK
+        string email UK
+        string phone UK
+        string full_name
+        string address
+        date date_of_birth
+        string status
+    }
+
+    METERS {
+        bigint id PK
+        string meter_number UK "WM-##### | EM-#####"
+        string meter_type "WATER | ELECTRICITY"
+        string status "ACTIVE | INACTIVE"
+        date installation_date
+        bigint customer_id FK
+    }
+
+    METER_READINGS {
+        bigint id PK
+        bigint meter_id FK
+        decimal previous_reading
+        decimal current_reading
+        date reading_date
+        int billing_month
+        int billing_year
+    }
+
+    TARIFF_PLANS {
+        bigint id PK
+        string meter_type
+        string tariff_type "FLAT | TIERED"
+        int version_no
+        date effective_from
+        date effective_to
+        decimal flat_rate_per_unit
+        decimal fixed_service_charge
+        decimal vat_rate
+        decimal late_penalty_rate
+    }
+
+    TARIFF_TIERS {
+        bigint id PK
+        bigint tariff_plan_id FK
+        decimal min_unit
+        decimal max_unit
+        decimal rate_per_unit
+    }
+
+    BILLS {
+        bigint id PK
+        string bill_reference UK
+        bigint customer_id FK
+        bigint meter_id FK
+        bigint meter_reading_id FK
+        int billing_month
+        int billing_year
+        decimal consumption
+        decimal amount_before_tax
+        decimal tax_amount
+        decimal penalty_amount
+        decimal total_amount
+        decimal paid_amount
+        decimal outstanding_balance
+        string status "UNPAID | APPROVED | PARTIALLY_PAID | PAID"
+        date due_date
+        bigint approved_by FK
+        datetime approved_at
+    }
+
+    PAYMENTS {
+        bigint id PK
+        bigint bill_id FK
+        string bill_reference
+        decimal amount_paid
+        string payment_method "MOMO | BANK | CARD | CASH"
+        date payment_date
+    }
+
+    NOTIFICATIONS {
+        bigint id PK
+        bigint customer_id FK
+        string event_type
+        string message
+        boolean email_sent
+        datetime created_at
+    }
+
+    AUDIT_LOGS {
+        bigint id PK
+        bigint user_id FK
+        string action_type
+        string entity_name
+        bigint entity_id
+        string old_value
+        string new_value
+        datetime performed_at
+    }
+
+    OTP_VERIFICATIONS {
+        bigint id PK
+        string email
+        string otp_code
+        string purpose "SIGNUP | PASSWORD_RESET"
+        datetime expires_at
+    }

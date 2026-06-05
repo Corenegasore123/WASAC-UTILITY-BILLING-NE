@@ -1,0 +1,407 @@
+================================================================================
+WASAC Utility Billing API — End-to-End Test Guide
+================================================================================
+Base URL : http://localhost:8080
+Swagger  : http://localhost:8080/swagger-ui.html
+Database : PostgreSQL wasac_db (localhost:5432, user postgres)
+
+Save IDs from each response (userId, customerId, meterId, readingId, billId, etc.)
+and paste them into later steps where you see placeholders like <CUSTOMER_ID>.
+
+================================================================================
+0. PREREQUISITES & COMMANDS
+================================================================================
+
+--- Start PostgreSQL (if not running) ---
+  # Windows service
+  net start postgresql-x64-18
+
+--- Create database (first time only) ---
+  psql -U postgres -c "CREATE DATABASE wasac_db;"
+
+--- Build & run the app ---
+  cd C:\Users\RCA_USER_23\Pictures\Screenshots\wasac
+  mvn clean package -DskipTests
+  mvn spring-boot:run
+
+  # Or run the JAR:
+  java -jar target\wasac-0.0.1-SNAPSHOT.jar
+
+--- Health check (no token) ---
+  curl http://localhost:8080/actuator/health
+
+--- Swagger auth ---
+  1. POST /api/auth/login → copy "token" from response
+  2. Swagger → Authorize → paste: Bearer <token>
+
+--- curl with JWT (replace <TOKEN>) ---
+  curl -H "Authorization: Bearer <TOKEN>" http://localhost:8080/api/customers
+
+--- PowerShell with JWT ---
+  $h = @{ Authorization = "Bearer <TOKEN>" }
+  Invoke-RestMethod -Uri "http://localhost:8080/api/customers" -Headers $h
+
+--- OTP from database (signup / forgot-password testing) ---
+  psql -U postgres -d wasac_db -c "SELECT email, otp_code, purpose, expires_at FROM otp_verifications ORDER BY id DESC LIMIT 5;"
+
+--- View recent bills ---
+  psql -U postgres -d wasac_db -c "SELECT id, bill_reference, status, total_amount, due_date FROM bills ORDER BY id;"
+
+================================================================================
+1. SEEDED ADMIN (auto-created on startup)
+================================================================================
+Email      : corenegasore@gmail.com
+Password   : @Corene@WASAC@1
+National ID: 1199087766554401
+Role       : ADMIN
+
+POST /api/auth/login
+{
+  "email": "corenegasore@gmail.com",
+  "password": "@Corene@WASAC@1"
+}
+
+Expected: 200 + JWT token. Use this token for all ADMIN steps.
+
+================================================================================
+2. CREATE STAFF (ADMIN token)
+================================================================================
+
+--- 2A. Create Operator ---
+POST /api/users
+{
+  "fullName": "Yves Gasore",
+  "email": "gasoreyne08@gmail.com",
+  "phoneNumber": "+250788123456",
+  "nationalId": "1199087766554402",
+  "role": "ROLE_OPERATOR"
+}
+
+Expected: 201. Temp password emailed. mustChangePassword=true.
+Save: <OPERATOR_USER_ID>
+
+--- 2B. Operator first login + change password ---
+POST /api/auth/login
+{
+  "email": "gasoreyne08@gmail.com",
+  "password": "<TEMP_PASSWORD_FROM_EMAIL>"
+}
+
+POST /api/auth/change-password   (Operator token)
+{
+  "currentPassword": "<TEMP_PASSWORD_FROM_EMAIL>",
+  "newPassword": "Operator@2026!"
+}
+
+--- 2C. Create Finance ---
+POST /api/users
+{
+  "fullName": "Roza Hakiza",
+  "email": "hakizaroza@gmail.com",
+  "phoneNumber": "+250788654321",
+  "nationalId": "1199087766554403",
+  "role": "ROLE_FINANCE"
+}
+
+Login + change-password same as operator.
+Save: <FINANCE_USER_ID>
+New password example: Finance@2026!
+
+================================================================================
+3. CREATE CUSTOMER — Option A: Admin creates (ADMIN token)
+================================================================================
+POST /api/customers
+{
+  "fullName": "Constance Uwase",
+  "nationalId": "1199087766554410",
+  "email": "constance.test@example.com",
+  "phone": "+250788111222",
+  "address": "Kigali Gasabo KG 123 St",
+  "dateOfBirth": "1995-03-15"
+}
+
+Expected: 201 + customerId + temp password emailed.
+Save: <CUSTOMER_ID>
+
+Customer login:
+POST /api/auth/login
+{ "email": "constance.test@example.com", "password": "<TEMP_FROM_EMAIL>" }
+
+POST /api/auth/change-password
+{
+  "currentPassword": "<TEMP_FROM_EMAIL>",
+  "newPassword": "Customer@2026!"
+}
+
+================================================================================
+4. CREATE CUSTOMER — Option B: Self-signup (no token)
+================================================================================
+POST /api/auth/signup
+{
+  "fullName": "Jean Mukama",
+  "nationalId": "1199087766554411",
+  "email": "jean.mukama@example.com",
+  "phoneNumber": "+250788333444",
+  "address": "Kigali Nyarugenge KN 45 Ave",
+  "dateOfBirth": "1990-07-20",
+  "password": "JeanSignup@2026!"
+}
+
+Expected: 201 — OTP sent, account pending.
+
+Get OTP:
+  psql -U postgres -d wasac_db -c "SELECT otp_code FROM otp_verifications WHERE email='jean.mukama@example.com' ORDER BY id DESC LIMIT 1;"
+
+POST /api/auth/verify-otp
+{
+  "email": "jean.mukama@example.com",
+  "otpCode": "<OTP_FROM_DB>"
+}
+
+Expected: 200 + JWT. Save <CUSTOMER2_ID> from GET /api/customers/me
+
+================================================================================
+5. TARIFFS (ADMIN token) — create BEFORE meter readings
+================================================================================
+effectiveFrom must be TODAY or a FUTURE date (use today's date when testing).
+
+--- 5A. WATER — FLAT tariff ---
+POST /api/tariffs
+{
+  "meterType": "WATER",
+  "tariffType": "FLAT",
+  "effectiveFrom": "2026-06-05",
+  "effectiveTo": null,
+  "flatRatePerUnit": 500,
+  "fixedServiceCharge": 2000,
+  "vatRate": 18,
+  "latePenaltyRate": 5,
+  "tiers": null
+}
+
+--- 5B. ELECTRICITY — TIERED tariff ---
+POST /api/tariffs
+{
+  "meterType": "ELECTRICITY",
+  "tariffType": "TIERED",
+  "effectiveFrom": "2026-06-05",
+  "effectiveTo": null,
+  "flatRatePerUnit": null,
+  "fixedServiceCharge": 3000,
+  "vatRate": 18,
+  "latePenaltyRate": 5,
+  "tiers": [
+    { "minUnit": 0,   "maxUnit": 100, "ratePerUnit": 120 },
+    { "minUnit": 100, "maxUnit": 300, "ratePerUnit": 150 },
+    { "minUnit": 300, "maxUnit": 9999, "ratePerUnit": 180 }
+  ]
+}
+
+Note: billingMonth on readings must fall within tariff effective period.
+      If tariff effectiveFrom is June 2026, use billingMonth: 6, billingYear: 2026.
+
+================================================================================
+6. ASSIGN METERS (ADMIN or OPERATOR token)
+================================================================================
+
+--- Water meter ---
+POST /api/meters
+{
+  "meterNumber": "WM-00001",
+  "meterType": "WATER",
+  "installationDate": "2026-01-15",
+  "status": "ACTIVE",
+  "customerId": <CUSTOMER_ID>
+}
+Save: <WATER_METER_ID>
+
+--- Electricity meter ---
+POST /api/meters
+{
+  "meterNumber": "EM-00001",
+  "meterType": "ELECTRICITY",
+  "installationDate": "2026-01-15",
+  "status": "ACTIVE",
+  "customerId": <CUSTOMER_ID>
+}
+Save: <ELECTRIC_METER_ID>
+
+================================================================================
+7. METER READINGS (OPERATOR token) — auto-generates bills
+================================================================================
+
+--- Water reading ---
+POST /api/meter-readings
+{
+  "meterId": <WATER_METER_ID>,
+  "previousReading": 100,
+  "currentReading": 145,
+  "readingDate": "2026-06-05",
+  "billingMonth": 6,
+  "billingYear": 2026
+}
+Save: <WATER_READING_ID>
+Side effect: bill auto-created (status UNPAID). Find billId via GET /api/bills.
+
+--- Electricity reading ---
+POST /api/meter-readings
+{
+  "meterId": <ELECTRIC_METER_ID>,
+  "previousReading": 500,
+  "currentReading": 680,
+  "readingDate": "2026-06-05",
+  "billingMonth": 6,
+  "billingYear": 2026
+}
+Save: <ELECTRIC_READING_ID>
+
+Verify bills:
+GET /api/bills?customerId=<CUSTOMER_ID>
+Save: <WATER_BILL_ID>, <ELECTRIC_BILL_ID>, and each billReference.
+
+================================================================================
+8. FINANCE APPROVAL (FINANCE token)
+================================================================================
+POST /api/bills/<WATER_BILL_ID>/approve
+POST /api/bills/<ELECTRIC_BILL_ID>/approve
+
+Expected: status changes UNPAID → APPROVED.
+Side effects: audit log BILL_APPROVED, approval email, notification row.
+
+================================================================================
+9. RECORD PAYMENT (FINANCE token)
+================================================================================
+GET /api/bills/<WATER_BILL_ID>   → note totalAmount / outstandingBalance
+
+--- Full payment ---
+POST /api/payments
+{
+  "billId": <WATER_BILL_ID>,
+  "billReference": "<WATER_BILL_REFERENCE>",
+  "amountPaid": <FULL_OUTSTANDING_AMOUNT>,
+  "paymentMethod": "MOMO",
+  "paymentDate": "2026-06-05"
+}
+
+--- Partial payment (electric bill) ---
+POST /api/payments
+{
+  "billId": <ELECTRIC_BILL_ID>,
+  "billReference": "<ELECTRIC_BILL_REFERENCE>",
+  "amountPaid": 10000,
+  "paymentMethod": "BANK",
+  "paymentDate": "2026-06-05"
+}
+
+Payment methods: MOMO | BANK | CARD | CASH
+
+Verify:
+GET /api/payments/bill/<ELECTRIC_BILL_ID>
+GET /api/bills/<ELECTRIC_BILL_ID>   → status PARTIALLY_PAID or PAID
+
+================================================================================
+10. NOTIFICATIONS & AUDIT (staff tokens)
+================================================================================
+GET /api/notifications?customerId=<CUSTOMER_ID>     (FINANCE/OPERATOR/ADMIN)
+GET /api/notifications/customer/<CUSTOMER_ID>       (CUSTOMER own token)
+
+GET /api/audit-logs                                 (ADMIN only)
+GET /api/audit-logs?actionType=BILL_APPROVED
+
+================================================================================
+11. CUSTOMER SELF-SERVICE (CUSTOMER token)
+================================================================================
+GET /api/customers/me
+GET /api/meters/customer/<CUSTOMER_ID>
+GET /api/bills/customer/<CUSTOMER_ID>
+GET /api/payments/customer/<CUSTOMER_ID>
+GET /api/notifications/customer/<CUSTOMER_ID>
+
+================================================================================
+12. PASSWORD RECOVERY (public)
+================================================================================
+POST /api/auth/forgot-password
+{ "email": "constance.test@example.com" }
+
+Get OTP from otp_verifications table, then:
+
+POST /api/auth/reset-password
+{
+  "email": "constance.test@example.com",
+  "otpCode": "<OTP>",
+  "newPassword": "NewPass@2026!"
+}
+
+================================================================================
+13. LATE-PAYMENT PENALTY CRON (automatic — no admin API)
+================================================================================
+Runs daily at 02:00 (configurable). No Swagger endpoint.
+
+application.properties:
+  app.billing.penalty-days-overdue=30
+  app.scheduler.cron.penalties=0 0 2 * * *
+
+To test quickly, temporarily set cron to every 2 minutes:
+  app.scheduler.cron.penalties=0 */2 * * * *
+Restart app. Bills UNPAID/APPROVED/PARTIALLY_PAID with dueDate > 30 days ago
+get penalty applied + late-payment warning email.
+
+Simulate overdue bill in DB (dev only):
+  psql -U postgres -d wasac_db -c "UPDATE bills SET due_date = '2026-01-01' WHERE id = <ELECTRIC_BILL_ID>;"
+
+================================================================================
+14. DEACTIVATE CUSTOMER (ADMIN or OPERATOR)
+================================================================================
+POST /api/customers/<CUSTOMER_ID>/deactivate
+
+Expected: customer INACTIVE + all meters set INACTIVE.
+
+================================================================================
+15. DATABASE BACKUP & RESTORE
+================================================================================
+
+--- Backup (already in project) ---
+  mkdir backup
+  set PGPASSWORD=12345678
+  "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" -h localhost -U postgres -d wasac_db -F p -f backup\wasac_db_backup.sql
+
+  File: backup\wasac_db_backup.sql
+
+--- Restore to fresh database ---
+  psql -U postgres -c "DROP DATABASE IF EXISTS wasac_db_restore;"
+  psql -U postgres -c "CREATE DATABASE wasac_db_restore;"
+  set PGPASSWORD=12345678
+  psql -U postgres -d wasac_db_restore -f backup\wasac_db_backup.sql
+
+--- Restore over existing wasac_db (destructive) ---
+  psql -U postgres -c "DROP DATABASE wasac_db;"
+  psql -U postgres -c "CREATE DATABASE wasac_db;"
+  psql -U postgres -d wasac_db -f backup\wasac_db_backup.sql
+
+================================================================================
+16. MERMAID ARCHITECTURE DIAGRAMS
+================================================================================
+Render at https://mermaid.live or VS Code Mermaid preview.
+
+Files in docs/architecture/:
+  01-system-overview.mmd   — layered architecture
+  02-er-diagram.mmd        — database entities
+  03-auth-flow.mmd         — signup / login sequence
+  04-billing-flow.mmd      — reading → bill → payment
+  05-component-diagram.mmd — Spring services & schedulers
+
+================================================================================
+17. QUICK ROLE REFERENCE
+================================================================================
+| Role      | Key actions                                              |
+|-----------|----------------------------------------------------------|
+| ADMIN     | Staff, customers, tariffs, users, audit logs, delete     |
+| OPERATOR  | Meters, readings, customer update/activate/deactivate    |
+| FINANCE   | Approve bills, record payments, view notifications       |
+| CUSTOMER  | Own profile, bills, payments, notifications              |
+
+Bill status flow: UNPAID → APPROVED → PARTIALLY_PAID → PAID
+
+================================================================================
+END
+================================================================================

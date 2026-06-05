@@ -1,0 +1,60 @@
+%% WASAC — System Overview (Layered Architecture)
+%% Render: https://mermaid.live — paste this file contents
+
+flowchart TB
+    subgraph Clients["Client Layer"]
+        SW[Swagger UI]
+        WEB[Web / Mobile Client]
+        PS[Postman / curl]
+    end
+
+    subgraph API["API Layer — Spring Boot 4 / Java 21"]
+        AUTH["/api/auth/**"]
+        USR["/api/users"]
+        CUS["/api/customers"]
+        MET["/api/meters"]
+        RDG["/api/meter-readings"]
+        TAR["/api/tariffs"]
+        BIL["/api/bills"]
+        PAY["/api/payments"]
+        NOT["/api/notifications"]
+        AUD["/api/audit-logs"]
+    end
+
+    subgraph Security["Security Layer"]
+        JWT[JWT Filter]
+        RBAC["@PreAuthorize Roles"]
+        PWD[Password Change Filter]
+    end
+
+    subgraph Services["Service Layer"]
+        AuthSvc[AuthService]
+        UserSvc[UserService]
+        CustSvc[CustomerService]
+        MeterSvc[MeterService]
+        ReadSvc[MeterReadingService]
+        TariffSvc[TariffService]
+        BillSvc[BillService]
+        PaySvc[PaymentService]
+        EmailSvc[EmailService]
+        AuditSvc[AuditService]
+        PenaltySched[LatePenaltyScheduler]
+    end
+
+    subgraph Data["Data Layer"]
+        PG[(PostgreSQL wasac_db)]
+        TRG[DB Triggers & Routines]
+    end
+
+    subgraph External["External Services"]
+        SMTP[Gmail SMTP]
+    end
+
+    Clients --> API
+    API --> Security
+    Security --> Services
+    Services --> PG
+    PG --> TRG
+    EmailSvc --> SMTP
+    PenaltySched --> BillSvc
+    PenaltySched -.->|cron 02:00| BillSvc
