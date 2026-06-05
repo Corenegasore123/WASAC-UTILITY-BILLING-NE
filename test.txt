@@ -379,16 +379,16 @@ Expected: customer INACTIVE + all meters set INACTIVE.
   psql -U postgres -d wasac_db -f backup\wasac_db_backup.sql
 
 ================================================================================
-16. MERMAID ARCHITECTURE DIAGRAMS
+16. SYSTEM ARCHITECTURE DIAGRAM (Mermaid)
 ================================================================================
 Render at https://mermaid.live or VS Code Mermaid preview.
 
-Files in docs/architecture/:
-  01-system-overview.mmd   — layered architecture
-  02-er-diagram.mmd        — database entities
-  03-auth-flow.mmd         — signup / login sequence
-  04-billing-flow.mmd      — reading → bill → payment
-  05-component-diagram.mmd — Spring services & schedulers
+Single overall diagram:
+  docs/architecture/system-architecture.mmd
+
+Shows: roles, clients, JWT security, all API modules, services,
+repositories, PostgreSQL + triggers, Gmail SMTP, late-penalty cron,
+and bill lifecycle (UNPAID → APPROVED → PARTIALLY_PAID → PAID).
 
 ================================================================================
 17. QUICK ROLE REFERENCE
