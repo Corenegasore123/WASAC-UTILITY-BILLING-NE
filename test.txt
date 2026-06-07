@@ -47,6 +47,43 @@ and paste them into later steps where you see placeholders like <CUSTOMER_ID>.
 --- View recent bills ---
   psql -U postgres -d wasac_db -c "SELECT id, bill_reference, status, total_amount, due_date FROM bills ORDER BY id;"
 
+--- View triggers (installed on startup by DatabaseRoutineInitializer) ---
+  psql -U postgres -d wasac_db -c "SELECT trigger_name, event_object_table, action_timing, event_manipulation FROM information_schema.triggers WHERE trigger_schema = 'public' ORDER BY event_object_table, trigger_name;"
+
+--- View trigger functions ---
+  psql -U postgres -d wasac_db -c "SELECT proname AS function_name FROM pg_proc JOIN pg_namespace n ON n.oid = pg_proc.pronamespace WHERE n.nspname = 'public' AND proname LIKE 'fn_%' ORDER BY proname;"
+
+--- View stored procedures ---
+  psql -U postgres -d wasac_db -c "SELECT proname AS procedure_name FROM pg_proc JOIN pg_namespace n ON n.oid = pg_proc.pronamespace WHERE n.nspname = 'public' AND prokind = 'p' ORDER BY proname;"
+
+--- View trigger + procedure inventory (one query) ---
+  psql -U postgres -d wasac_db -c "SELECT 'trigger' AS type, trigger_name AS name FROM information_schema.triggers WHERE trigger_schema = 'public' UNION ALL SELECT 'procedure', proname FROM pg_proc JOIN pg_namespace n ON n.oid = pg_proc.pronamespace WHERE n.nspname = 'public' AND prokind = 'p' ORDER BY type, name;"
+
+--- View source code of a trigger function (example: bill insert) ---
+  psql -U postgres -d wasac_db -c "SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname = 'fn_notify_on_bill_insert';"
+
+--- View source code of a procedure (example: late penalty) ---
+  psql -U postgres -d wasac_db -c "SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname = 'sp_apply_late_penalty';"
+
+--- View notifications created by DB triggers ---
+  psql -U postgres -d wasac_db -c "SELECT id, customer_id, event_type, message, email_sent, created_at FROM notifications ORDER BY id DESC LIMIT 10;"
+
+--- Test cursor procedure manually (overdue bill reminders) ---
+  psql -U postgres -d wasac_db -c "CALL sp_notify_overdue_bills();"
+
+Expected triggers:
+  trg_bill_insert_notification      → AFTER INSERT on bills
+  trg_payment_full_notification     → AFTER INSERT on payments
+
+Expected functions:
+  fn_bill_notification_message, fn_notify_on_bill_insert, fn_handle_full_payment
+
+Expected procedures:
+  sp_record_payment, sp_apply_late_penalty, sp_notify_overdue_bills (uses CURSOR)
+
+If missing, restart the Spring Boot app and check logs for:
+  PostgreSQL billing routines installed successfully
+
 ================================================================================
 1. SEEDED ADMIN (auto-created on startup)
 ================================================================================
@@ -348,6 +385,58 @@ get penalty applied + late-payment warning email.
 
 Simulate overdue bill in DB (dev only):
   psql -U postgres -d wasac_db -c "UPDATE bills SET due_date = '2026-01-01' WHERE id = <ELECTRIC_BILL_ID>;"
+
+Manual penalty (FINANCE/ADMIN token):
+POST /api/bills/<BILL_ID>/apply-penalty
+
+================================================================================
+13A. DATABASE TRIGGERS & PROCEDURES — VERIFY IN PostgreSQL
+================================================================================
+Connect interactively:
+  psql -U postgres -d wasac_db
+
+List all triggers:
+  SELECT trigger_name, event_object_table, action_timing, event_manipulation
+  FROM information_schema.triggers
+  WHERE trigger_schema = 'public'
+  ORDER BY event_object_table, trigger_name;
+
+List trigger functions:
+  SELECT proname FROM pg_proc
+  JOIN pg_namespace n ON n.oid = pg_proc.pronamespace
+  WHERE n.nspname = 'public' AND proname LIKE 'fn_%';
+
+List stored procedures:
+  SELECT proname FROM pg_proc
+  JOIN pg_namespace n ON n.oid = pg_proc.pronamespace
+  WHERE n.nspname = 'public' AND prokind = 'p';
+
+View function/procedure source:
+  SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname = 'fn_notify_on_bill_insert';
+  SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname = 'fn_handle_full_payment';
+  SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname = 'sp_record_payment';
+  SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname = 'sp_apply_late_penalty';
+  SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname = 'sp_notify_overdue_bills';
+
+Verify bill-generation trigger (after step 7 — meter reading):
+  SELECT id, event_type, message, email_sent FROM notifications
+  WHERE event_type = 'BILL_GENERATED' ORDER BY id DESC LIMIT 5;
+
+Expected message format:
+  Dear <name>, Your <WATER|ELECTRICITY> utility bill of <amount> FRW has been successfully processed.
+
+Verify full-payment trigger (after step 9 — full payment):
+  SELECT id, status, outstanding_balance FROM bills WHERE id = <WATER_BILL_ID>;
+  SELECT id, event_type, message FROM notifications
+  WHERE event_type = 'BILL_FULLY_PAID' AND reference_id = <WATER_BILL_ID>;
+
+Test procedures manually:
+  CALL sp_apply_late_penalty(<BILL_ID>, 5.0);
+  CALL sp_notify_overdue_bills();
+
+One-line commands (PowerShell / cmd):
+  psql -U postgres -d wasac_db -c "SELECT trigger_name, event_object_table FROM information_schema.triggers WHERE trigger_schema = 'public';"
+  psql -U postgres -d wasac_db -c "SELECT proname FROM pg_proc JOIN pg_namespace n ON n.oid = pg_proc.pronamespace WHERE n.nspname = 'public' AND prokind = 'p';"
 
 ================================================================================
 14. DEACTIVATE CUSTOMER (ADMIN or OPERATOR)
