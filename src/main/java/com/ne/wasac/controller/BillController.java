@@ -41,6 +41,15 @@ public class BillController {
         return billService.approve(id);
     }
 
+    @PostMapping("/{id}/apply-penalty")
+    @PreAuthorize("hasAnyRole('ADMIN','FINANCE')")
+    @Operation(summary = "Apply late-payment penalty",
+            description = "Adds a penalty from the bill tariff latePenaltyRate. "
+                    + "Bill must be overdue and not fully paid. Sends warning email. Role: ADMIN, FINANCE.")
+    public BillResponse applyPenalty(@Parameter(description = "Bill id") @PathVariable Long id) {
+        return billService.applyLatePenalty(id);
+    }
+
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','FINANCE','OPERATOR')")
     @Operation(summary = "List or filter bills",

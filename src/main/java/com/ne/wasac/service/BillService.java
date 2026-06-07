@@ -140,7 +140,29 @@ public class BillService {
         return DtoMapper.toBillResponse(saved);
     }
 
-    /** Applies a late-payment penalty to an overdue bill. */
+    /**
+     * Staff-triggered late penalty for a single overdue bill.
+     * Requires the due date to have passed; uses the tariff latePenaltyRate.
+     */
+    @Transactional
+    public BillResponse applyLatePenalty(Long billId) {
+        Bill bill = getBill(billId);
+        if (bill.getStatus() == BillStatus.PAID) {
+            throw new BusinessRuleException("Cannot apply penalty to a fully paid bill");
+        }
+        if (!bill.getDueDate().isBefore(LocalDate.now())) {
+            throw new BusinessRuleException("Bill is not overdue yet");
+        }
+        TariffPlan tariff = tariffService.getApplicableTariff(
+                bill.getMeter().getMeterType(), bill.getBillingMonth(), bill.getBillingYear());
+        BigDecimal previousPenalty = bill.getPenaltyAmount();
+        applyLatePenalty(bill, tariff);
+        auditService.log(AuditAction.BILL_PENALTY_APPLIED, "Bill", billId,
+                previousPenalty.toPlainString(), bill.getPenaltyAmount().toPlainString());
+        return DtoMapper.toBillResponse(bill);
+    }
+
+    /** Applies a late-payment penalty to an overdue bill (used by cron and manual API). */
     @Transactional
     public void applyLatePenalty(Bill bill, TariffPlan tariff) {
         if (bill.getStatus() == BillStatus.PAID) {

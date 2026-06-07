@@ -15,7 +15,7 @@ import java.util.List;
 
 /**
  * Applies late-payment penalties automatically on a cron schedule.
- * No admin trigger — runs in the background only.
+ * Runs in the background; staff can also trigger via POST /api/bills/{id}/apply-penalty.
  */
 @Slf4j
 @Service

@@ -11,16 +11,17 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Local or international phone: 7–15 digits, optional leading + country code.
+ * Rwanda mobile: local 072xxxxxxx (10 digits) or international +25072xxxxxxx (13 chars).
+ * Valid prefixes after 0 or +250: 72, 73, 78, 79.
  */
 @Documented
 @Target({ElementType.FIELD, ElementType.PARAMETER})
 @Retention(RetentionPolicy.RUNTIME)
 @Constraint(validatedBy = {})
 @Pattern(regexp = ValidationPatterns.PHONE_NUMBER,
-        message = "Phone must be a valid local or international number (7–15 digits, optional + prefix)")
+        message = "Phone must be 10 digits (072/073/078/079xxxxxxx) or 13 chars (+25072/073/078/079xxxxxxx)")
 public @interface PhoneNumber {
-    String message() default "Phone must be a valid local or international number (7–15 digits, optional + prefix)";
+    String message() default "Phone must be 10 digits (072/073/078/079xxxxxxx) or 13 chars (+25072/073/078/079xxxxxxx)";
     Class<?>[] groups() default {};
     Class<? extends Payload>[] payload() default {};
 }

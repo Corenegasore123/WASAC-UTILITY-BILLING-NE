@@ -9,8 +9,8 @@ public final class ValidationPatterns {
     /** Letters and spaces only — rejects digits in person names. */
     public static final String LETTERS_ONLY_NAME = "^[a-zA-Z\\s]+$";
 
-    /** Local or international phone: optional +, then 7–15 digits. */
-    public static final String PHONE_NUMBER = "^(\\+[1-9]\\d{1,14}|[0-9]{7,15})$";
+    /** Rwanda mobile: 072/073/078/079 + 7 digits, or +250 + same prefix (10 or 13 chars). */
+    public static final String PHONE_NUMBER = "^(?:0|\\+250)(72|73|78|79)\\d{7}$";
 
     /** National ID must be exactly 16 digits. */
     public static final String NATIONAL_ID = "^[0-9]{16}$";
