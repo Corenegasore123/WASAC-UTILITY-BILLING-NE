@@ -148,6 +148,9 @@ public class TariffService {
             if (request.getFlatRatePerUnit() == null) {
                 throw new BusinessRuleException("Flat rate per unit is required for FLAT tariff");
             }
+            if (request.getTiers() != null && !request.getTiers().isEmpty()) {
+                throw new BusinessRuleException("Tiers are not allowed for FLAT tariffs; use flatRatePerUnit as the unit price");
+            }
         } else if (request.getTiers() == null || request.getTiers().isEmpty()) {
             throw new BusinessRuleException("At least one tier is required for TIERED tariff");
         }
@@ -157,7 +160,7 @@ public class TariffService {
     }
 
     private void mapTiers(TariffPlan plan, List<TariffTierRequest> tierRequests) {
-        if (tierRequests == null) {
+        if (tierRequests == null || plan.getTariffType() == TariffType.FLAT) {
             return;
         }
         for (TariffTierRequest tr : tierRequests) {
