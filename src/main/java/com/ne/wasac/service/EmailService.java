@@ -4,10 +4,13 @@ import com.ne.wasac.enums.RoleName;
 import com.ne.wasac.model.Bill;
 import com.ne.wasac.model.Customer;
 import com.ne.wasac.model.Notification;
+import com.ne.wasac.model.Payment;
+import com.ne.wasac.repository.AppUserRepository;
 import com.ne.wasac.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -26,6 +29,8 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
     private final NotificationRepository notificationRepository;
+    private final BillReceiptPdfService billReceiptPdfService;
+    private final AppUserRepository appUserRepository;
 
     @Value("${app.mail.from}")
     private String fromAddress;
@@ -84,24 +89,36 @@ public class EmailService {
 
     /** Bill generated notification to customer. */
     public void sendBillGenerated(Customer customer, Bill bill, Notification notification) {
-        if (customer.getEmail() == null || customer.getEmail().isBlank()) {
-            log.warn("No email for customer {} — notification queued only", customer.getId());
+        String to = resolveCustomerEmail(customer);
+        if (to == null) {
+            log.warn("No email for customer {} — bill generated email skipped", customer.getId());
             return;
         }
         String html = """
                 <p>Dear %s,</p>
-                <p>Your %s bill of <b>%s FRW</b> for %d/%d is ready.</p>
+                <p>Your %s utility bill of <b>%s FRW</b> for %d/%d has been successfully processed.</p>
+                <p>Bill reference: <b>%s</b>. Due date: <b>%s</b>.</p>
                 """.formatted(customer.getFullName(), bill.getMeter().getMeterType(),
-                bill.getTotalAmount(), bill.getBillingMonth(), bill.getBillingYear());
-        boolean sent = sendSafe(customer.getEmail(), "WASAC Bill Ready", html, notification);
+                bill.getTotalAmount(), bill.getBillingMonth(), bill.getBillingYear(),
+                bill.getBillReference(), bill.getDueDate());
+        boolean sent = sendSafe(to, "WASAC Bill Ready", html, notification);
         markNotificationEmailSent(sent, notification, customer.getId(), "BILL_GENERATED", bill.getId());
     }
 
     /** Bill approved by finance. */
     public void sendBillApproved(Customer customer, Bill bill) {
-        String html = "<p>Dear %s,</p><p>Your bill <b>%s</b> has been reviewed and approved.</p>"
-                .formatted(customer.getFullName(), bill.getBillReference());
-        sendSafe(customer.getEmail(), "WASAC Bill Approved", html, null);
+        String to = resolveCustomerEmail(customer);
+        if (to == null) {
+            log.warn("No email for customer {} — bill approved email skipped", customer.getId());
+            return;
+        }
+        String html = """
+                <p>Dear %s,</p>
+                <p>Your %s utility bill <b>%s</b> of <b>%s FRW</b> has been reviewed and approved.</p>
+                <p>You may now make payment before the due date (<b>%s</b>).</p>
+                """.formatted(customer.getFullName(), bill.getMeter().getMeterType(),
+                bill.getBillReference(), bill.getTotalAmount(), bill.getDueDate());
+        sendSafe(to, "WASAC Bill Approved", html, null);
     }
 
     /** Payment received with remaining balance. */
@@ -113,12 +130,30 @@ public class EmailService {
         sendSafe(customer.getEmail(), "WASAC Payment Received", html, null);
     }
 
-    /** Bill fully paid confirmation. */
-    public void sendBillFullyPaid(Customer customer, Bill bill) {
-        String html = "<p>Dear %s,</p><p>Your bill is fully paid. Balance: <b>0 FRW</b>.</p>"
-                .formatted(customer.getFullName());
-        boolean sent = sendSafe(customer.getEmail(), "WASAC Bill Paid", html, null);
+    /** Bill fully paid confirmation with PDF receipt attached. */
+    public void sendBillFullyPaid(Customer customer, Bill bill, Payment payment) {
+        if (customer.getEmail() == null || customer.getEmail().isBlank()) {
+            log.warn("No email for customer {} — bill paid notification skipped", customer.getId());
+            return;
+        }
+        String html = """
+                <p>Dear %s,</p>
+                <p>Your bill <b>%s</b> is fully paid. Balance: <b>0 FRW</b>.</p>
+                <p>Please find your payment receipt attached as a PDF.</p>
+                """.formatted(customer.getFullName(), bill.getBillReference());
+        EmailAttachment attachment = buildReceiptAttachment(bill, payment);
+        boolean sent = sendSafe(customer.getEmail(), "WASAC Bill Paid", html, null, attachment);
         markNotificationEmailSent(sent, null, customer.getId(), "BILL_FULLY_PAID", bill.getId());
+    }
+
+    private EmailAttachment buildReceiptAttachment(Bill bill, Payment payment) {
+        try {
+            byte[] pdf = billReceiptPdfService.generate(bill, payment);
+            return new EmailAttachment("WASAC-Receipt-" + bill.getBillReference() + ".pdf", pdf);
+        } catch (Exception ex) {
+            log.warn("Could not generate receipt PDF for bill {}: {}", bill.getId(), ex.getMessage());
+            return null;
+        }
     }
 
     /** Late payment warning after penalty applied. */
@@ -185,13 +220,19 @@ public class EmailService {
         }
     }
 
+    private boolean sendSafe(String to, String subject, String htmlBody, Notification notification) {
+        return sendSafe(to, subject, htmlBody, notification, null);
+    }
+
     /**
      * Sends HTML email; returns true on success.
      * Catches all exceptions so callers are not interrupted.
      */
-    private boolean sendSafe(String to, String subject, String htmlBody, Notification notification) {
+    private boolean sendSafe(String to, String subject, String htmlBody, Notification notification,
+                             EmailAttachment attachment) {
         if (!mailEnabled) {
-            log.info("Mail disabled — would send to {} subject {}", to, subject);
+            log.info("Mail disabled — would send to {} subject {}{}", to, subject,
+                    attachment == null ? "" : " with attachment " + attachment.filename());
             return false;
         }
         try {
@@ -201,12 +242,30 @@ public class EmailService {
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(htmlBody, true);
+            if (attachment != null) {
+                helper.addAttachment(attachment.filename(),
+                        new ByteArrayResource(attachment.content()), "application/pdf");
+            }
             mailSender.send(message);
-            log.info("Email sent to {}", to);
+            log.info("Email sent to {}{}", to, attachment == null ? "" : " with attachment " + attachment.filename());
             return true;
         } catch (Exception ex) {
             log.error("Failed to send email to {}: {}", to, ex.getMessage());
             return false;
         }
+    }
+
+    private record EmailAttachment(String filename, byte[] content) {}
+
+    /** Uses customer profile email, falling back to linked login account email. */
+    private String resolveCustomerEmail(Customer customer) {
+        if (customer.getEmail() != null && !customer.getEmail().isBlank()) {
+            return customer.getEmail().trim();
+        }
+        return appUserRepository.findFirstByCustomer_Id(customer.getId())
+                .map(user -> user.getEmail())
+                .filter(email -> email != null && !email.isBlank())
+                .map(String::trim)
+                .orElse(null);
     }
 }

@@ -85,7 +85,7 @@ public class PaymentService {
                 request.getAmountPaid().toPlainString());
 
         if (bill.getStatus() == BillStatus.PAID) {
-            emailService.sendBillFullyPaid(bill.getCustomer(), bill);
+            emailService.sendBillFullyPaid(bill.getCustomer(), bill, saved);
         } else {
             emailService.sendPaymentReceived(bill.getCustomer(), bill, request.getAmountPaid());
         }

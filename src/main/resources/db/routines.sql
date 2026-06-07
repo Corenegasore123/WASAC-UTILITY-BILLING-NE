@@ -1,6 +1,19 @@
 -- PostgreSQL triggers and stored procedures for WASAC billing
 -- Each block is separated by -- @split (parsed by DatabaseRoutineInitializer)
 
+-- Shared notification message: Dear {name}, Your {type} utility bill of {amount} FRW has been successfully processed.
+CREATE OR REPLACE FUNCTION fn_bill_notification_message(
+    p_customer_name VARCHAR,
+    p_meter_type    VARCHAR,
+    p_amount        NUMERIC
+)
+RETURNS TEXT AS $$
+BEGIN
+    RETURN 'Dear ' || p_customer_name || ', Your ' || p_meter_type
+        || ' utility bill of ' || p_amount || ' FRW has been successfully processed.';
+END;
+$$ LANGUAGE plpgsql;
+-- @split
 -- Fires AFTER INSERT on bills: creates in-app notification for bill generation
 CREATE OR REPLACE FUNCTION fn_notify_on_bill_insert()
 RETURNS TRIGGER AS $$
@@ -17,9 +30,7 @@ BEGIN
     INSERT INTO notifications (customer_id, message, event_type, reference_id, email_sent, created_at)
     VALUES (
         NEW.customer_id,
-        'Dear ' || v_customer_name || ', Your ' || NEW.billing_month || '/' || NEW.billing_year
-            || ' ' || v_meter_type || ' utility bill of ' || NEW.total_amount
-            || ' FRW has been successfully processed.',
+        fn_bill_notification_message(v_customer_name, v_meter_type, NEW.total_amount),
         'BILL_GENERATED',
         NEW.id,
         FALSE,
@@ -42,13 +53,14 @@ DECLARE
     v_outstanding   NUMERIC(19, 2);
     v_customer_id   BIGINT;
     v_customer_name VARCHAR(255);
-    v_month         INTEGER;
-    v_year          INTEGER;
+    v_meter_type    VARCHAR(20);
+    v_total_amount  NUMERIC(19, 2);
 BEGIN
-    SELECT b.outstanding_balance, b.customer_id, b.billing_month, b.billing_year, c.full_name
-    INTO v_outstanding, v_customer_id, v_month, v_year, v_customer_name
+    SELECT b.outstanding_balance, b.customer_id, b.total_amount, c.full_name, m.meter_type
+    INTO v_outstanding, v_customer_id, v_total_amount, v_customer_name, v_meter_type
     FROM bills b
     JOIN customers c ON c.id = b.customer_id
+    JOIN meters m ON m.id = b.meter_id
     WHERE b.id = NEW.bill_id;
 
     IF v_outstanding IS NOT NULL AND v_outstanding <= 0 THEN
@@ -57,8 +69,7 @@ BEGIN
         INSERT INTO notifications (customer_id, message, event_type, reference_id, email_sent, created_at)
         VALUES (
             v_customer_id,
-            'Dear ' || v_customer_name || ', your ' || v_month || '/' || v_year
-                || ' payment has been received. Balance: 0 FRW.',
+            fn_bill_notification_message(v_customer_name, v_meter_type, v_total_amount),
             'BILL_FULLY_PAID',
             NEW.bill_id,
             FALSE,
@@ -127,5 +138,44 @@ BEGIN
         total_amount = total_amount + v_penalty,
         outstanding_balance = outstanding_balance + v_penalty
     WHERE id = p_bill_id;
+END;
+$$;
+-- @split
+-- Cursor-based procedure: reminds customers with overdue unpaid bills (manual/cron invocation)
+CREATE OR REPLACE PROCEDURE sp_notify_overdue_bills()
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    overdue_bill CURSOR FOR
+        SELECT b.id, b.customer_id, b.total_amount, c.full_name, m.meter_type
+        FROM bills b
+        JOIN customers c ON c.id = b.customer_id
+        JOIN meters m ON m.id = b.meter_id
+        WHERE b.status IN ('APPROVED', 'PARTIALLY_PAID')
+          AND b.outstanding_balance > 0
+          AND b.due_date < CURRENT_DATE;
+    v_bill_id       BIGINT;
+    v_customer_id   BIGINT;
+    v_total_amount  NUMERIC(19, 2);
+    v_customer_name VARCHAR(255);
+    v_meter_type    VARCHAR(20);
+BEGIN
+    OPEN overdue_bill;
+    LOOP
+        FETCH overdue_bill INTO v_bill_id, v_customer_id, v_total_amount, v_customer_name, v_meter_type;
+        EXIT WHEN NOT FOUND;
+
+        INSERT INTO notifications (customer_id, message, event_type, reference_id, email_sent, created_at)
+        VALUES (
+            v_customer_id,
+            fn_bill_notification_message(v_customer_name, v_meter_type, v_total_amount),
+            'PAYMENT_OVERDUE',
+            v_bill_id,
+            FALSE,
+            NOW()
+        )
+        ON CONFLICT ON CONSTRAINT uk_notification_event DO NOTHING;
+    END LOOP;
+    CLOSE overdue_bill;
 END;
 $$;

@@ -8,6 +8,8 @@ import com.ne.wasac.enums.SortDirection;
 import com.ne.wasac.enums.Status;
 import com.ne.wasac.enums.TariffType;
 import com.ne.wasac.util.QuerySort;
+import com.ne.wasac.event.BillApprovedEvent;
+import com.ne.wasac.event.BillGeneratedEvent;
 import com.ne.wasac.exception.BusinessRuleException;
 import com.ne.wasac.exception.ResourceNotFoundException;
 import com.ne.wasac.model.*;
@@ -15,6 +17,7 @@ import com.ne.wasac.repository.BillRepository;
 import com.ne.wasac.security.SecurityUser;
 import com.ne.wasac.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +52,7 @@ public class BillService {
     private final TariffService tariffService;
     private final EmailService emailService;
     private final AuditService auditService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * Creates a bill from a meter reading. Enforces one bill per meter/period
@@ -116,7 +120,7 @@ public class BillService {
 
         Bill saved = billRepository.save(bill);
         billRepository.flush();
-        emailService.sendBillGenerated(customer, saved, null);
+        eventPublisher.publishEvent(new BillGeneratedEvent(saved.getId()));
         return DtoMapper.toBillResponse(saved);
     }
 
@@ -136,7 +140,7 @@ public class BillService {
         bill.setApprovedAt(LocalDateTime.now());
         Bill saved = billRepository.save(bill);
         auditService.log(AuditAction.BILL_APPROVED, "Bill", saved.getId(), old.name(), BillStatus.APPROVED.name());
-        emailService.sendBillApproved(saved.getCustomer(), saved);
+        eventPublisher.publishEvent(new BillApprovedEvent(saved.getId()));
         return DtoMapper.toBillResponse(saved);
     }
 

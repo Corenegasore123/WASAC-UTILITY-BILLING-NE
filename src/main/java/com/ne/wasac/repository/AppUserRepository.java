@@ -22,6 +22,8 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
     boolean existsByCustomer_Id(Long customerId);
 
+    Optional<AppUser> findFirstByCustomer_Id(Long customerId);
+
     @Query("SELECT COUNT(u) FROM AppUser u JOIN u.roles r WHERE r.name = :role AND u.status = :status")
     long countByRoleAndStatus(@Param("role") RoleName role, @Param("status") Status status);
 

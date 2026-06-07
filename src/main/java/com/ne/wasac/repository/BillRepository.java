@@ -13,6 +13,9 @@ import java.util.Optional;
 
 public interface BillRepository extends JpaRepository<Bill, Long> {
 
+    @Query("SELECT b FROM Bill b JOIN FETCH b.customer JOIN FETCH b.meter WHERE b.id = :id")
+    Optional<Bill> findByIdWithCustomerAndMeter(@Param("id") Long id);
+
     Optional<Bill> findByBillReference(String billReference);
 
     List<Bill> findByCustomerIdOrderByBillingYearDescBillingMonthDesc(Long customerId);
