@@ -84,8 +84,7 @@ public class BillService {
         TariffPlan tariff = tariffService.getApplicableTariff(
                 meter.getMeterType(), request.getBillingMonth(), request.getBillingYear());
 
-        BigDecimal usageCharge = calculateUsageCharge(tariff, consumption);
-        BigDecimal amountBeforeTax = usageCharge.add(tariff.getFixedServiceCharge());
+        BigDecimal amountBeforeTax = calculateUsageCharge(tariff, consumption);
         BigDecimal taxAmount = amountBeforeTax.multiply(tariff.getVatRate())
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
