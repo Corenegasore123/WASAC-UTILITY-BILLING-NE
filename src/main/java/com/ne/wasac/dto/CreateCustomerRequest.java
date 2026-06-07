@@ -1,10 +1,10 @@
 package com.ne.wasac.dto;
 
 import com.ne.wasac.validation.LettersOnly;
+import com.ne.wasac.validation.LowercaseEmail;
 import com.ne.wasac.validation.MinimumAge;
 import com.ne.wasac.validation.NationalId;
 import com.ne.wasac.validation.PhoneNumber;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Size;
@@ -30,7 +30,7 @@ public class CreateCustomerRequest {
     private String nationalId;
 
     @NotBlank
-    @Email
+    @LowercaseEmail
     private String email;
 
     @NotBlank

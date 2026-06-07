@@ -1,11 +1,11 @@
 package com.ne.wasac.dto.auth;
 
 import com.ne.wasac.validation.LettersOnly;
+import com.ne.wasac.validation.LowercaseEmail;
 import com.ne.wasac.validation.MinimumAge;
 import com.ne.wasac.validation.NationalId;
 import com.ne.wasac.validation.PhoneNumber;
 import com.ne.wasac.validation.StrongPassword;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Size;
@@ -31,7 +31,7 @@ public class SignupRequest {
     private String nationalId;
 
     @NotBlank
-    @Email
+    @LowercaseEmail
     private String email;
 
     @NotBlank

@@ -2,9 +2,9 @@ package com.ne.wasac.dto.auth;
 
 import com.ne.wasac.enums.RoleName;
 import com.ne.wasac.validation.LettersOnly;
+import com.ne.wasac.validation.LowercaseEmail;
 import com.ne.wasac.validation.NationalId;
 import com.ne.wasac.validation.PhoneNumber;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -24,7 +24,7 @@ public class CreateStaffRequest {
     private String fullName;
 
     @NotBlank
-    @Email
+    @LowercaseEmail
     private String email;
 
     @NotBlank

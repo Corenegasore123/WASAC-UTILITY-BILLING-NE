@@ -1,6 +1,6 @@
 package com.ne.wasac.dto.auth;
 
-import jakarta.validation.constraints.Email;
+import com.ne.wasac.validation.LowercaseEmail;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
@@ -11,7 +11,7 @@ import lombok.Setter;
 public class VerifyOtpRequest {
 
     @NotBlank
-    @Email
+    @LowercaseEmail
     private String email;
 
     @NotBlank

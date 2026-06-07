@@ -18,6 +18,9 @@ public final class ValidationPatterns {
     /** Water WM-##### or electricity EM-##### meter numbers. */
     public static final String METER_NUMBER = "^(WM|EM)-[0-9]{5}$";
 
+    /** Valid email address using lowercase letters only (no capitals). */
+    public static final String LOWERCASE_EMAIL = "^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$";
+
     private ValidationPatterns() {
     }
 }

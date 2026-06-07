@@ -1,6 +1,6 @@
 package com.ne.wasac.dto.auth;
 
-import jakarta.validation.constraints.Email;
+import com.ne.wasac.validation.LowercaseEmail;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
@@ -13,7 +13,7 @@ import lombok.Setter;
 public class LoginRequest {
 
     @NotBlank(message = "Email is required")
-    @Email(message = "Email must be valid")
+    @LowercaseEmail
     private String email;
 
     @NotBlank(message = "Password is required")
